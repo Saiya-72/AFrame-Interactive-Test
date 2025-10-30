@@ -14,686 +14,225 @@
     <!-- aframe-extras v4.1.2 (has kinematic-body + movement-controls) -->
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v4.1.2/dist/aframe-extras.min.js"></script>
 
-    <!-- Components -->
-    <script src="components/blankwall.js"></script>
-    <script src="components/chair.js"></script>
-    <script src="components/table.js"></script>
-    <script src="components/projector.js"></script>
-    <script src="components/whiteboard.js"></script>
-    <script src="components/projection-screen.js"></script>
-    <script src="components/double-door.js"></script>
-    <script src="components/window-pane.js"></script>
-    <script src="components/ceiling-light-square.js"></script>
-    <script src="components/air-vent.js"></script>
-    <script src="components/classroom-floor.js"></script>
+    <!-- Not sure why I have this -->
     <script src="index.js"></script>
-    <script src="components/tree_cluster.js"></script>
+    <!-- Components -->
+    <script src="components/change-color-on-click.js"></script>
+    <script src="components/toggle-target-on-click.js"></script>
     <!-- Sky -->
     <script src="skybox/skycomponent.js"></script>
-    <script src="components/chair_component.js"></script>
-    <script src="components/videoscreen.js"></script>
 
     <style>
       html, body { margin:0; height:100%; }
-      .hud { position:absolute; top:8px; left:10px; font:14px system-ui; color:#fff; background:rgba(0,0,0,.35); padding:6px 8px; border-radius:6px; }
+      .hud {
+        position:absolute;
+        top:8px;
+        left:10px;
+        font:14px system-ui;
+        color:#fff;
+        background:rgba(0,0,0,.35);
+        padding:6px 8px;
+        border-radius:6px;
+      }
     </style>
+
+    <!-- ========== Movement / Look components ========== -->
+
+    <!-- Only move with WASD -->
+    <script>
+    AFRAME.registerComponent('wasd-move-only', {
+      schema: { speed: {type: 'number', default: 3} }, // meters per second
+      init() {
+        this.state = {w:false, a:false, s:false, d:false};
+        this._vecF = new THREE.Vector3();
+        this._vecR = new THREE.Vector3();
+
+        this.onKeyDown = e => {
+          if (e.code === 'KeyW') this.state.w = true;
+          if (e.code === 'KeyA') this.state.a = true;
+          if (e.code === 'KeyS') this.state.s = true;
+          if (e.code === 'KeyD') this.state.d = true;
+        };
+        this.onKeyUp = e => {
+          if (e.code === 'KeyW') this.state.w = false;
+          if (e.code === 'KeyA') this.state.a = false;
+          if (e.code === 'KeyS') this.state.s = false;
+          if (e.code === 'KeyD') this.state.d = false;
+        };
+        window.addEventListener('keydown', this.onKeyDown);
+        window.addEventListener('keyup', this.onKeyUp);
+      },
+      tick(time, dt) {
+        const dsec = dt / 1000;
+        if (!(this.state.w || this.state.a || this.state.s || this.state.d)) return;
+
+        const obj = this.el.object3D;
+        // get yaw object if present, so movement follows where we look
+        const lc = this.el.components['look-controls'];
+        const yawObj = lc && lc.yawObject ? lc.yawObject : obj;
+
+        // forward on XZ plane
+        this._vecF.set(0, 0, -1).applyQuaternion(yawObj.quaternion);
+        this._vecF.y = 0;
+        this._vecF.normalize();
+
+        // right vector
+        this._vecR.copy(this._vecF).cross(new THREE.Vector3(0, 1, 0)).normalize();
+
+        let moveX = 0, moveZ = 0;
+        if (this.state.w) { moveX += this._vecF.x; moveZ += this._vecF.z; }
+        if (this.state.s) { moveX -= this._vecF.x; moveZ -= this._vecF.z; }
+        if (this.state.d) { moveX += this._vecR.x; moveZ += this._vecR.z; }
+        if (this.state.a) { moveX -= this._vecR.x; moveZ -= this._vecR.z; }
+
+        const speed = this.data.speed * dsec;
+        obj.position.x += moveX * speed;
+        obj.position.z += moveZ * speed;
+      },
+      remove() {
+        window.removeEventListener('keydown', this.onKeyDown);
+        window.removeEventListener('keyup', this.onKeyUp);
+      }
+    });
+    </script>
+
+    <!-- look around smoothly with arrow keys -->
+    <script>
+    AFRAME.registerComponent('arrow-look', {
+      schema: {
+        yawSpeed:   {type: 'number', default: 90},   // deg per second
+        pitchSpeed: {type: 'number', default: 75},   // deg per second
+        clamp:      {type: 'number', default: 85}    // deg up:down
+      },
+      init() {
+        this.state = { left:false, right:false, up:false, down:false };
+        this.onKeyDown = e => {
+          if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
+          if (e.code === 'ArrowLeft')  this.state.left  = true;
+          if (e.code === 'ArrowRight') this.state.right = true;
+          if (e.code === 'ArrowUp')    this.state.up    = true;
+          if (e.code === 'ArrowDown')  this.state.down  = true;
+        };
+        this.onKeyUp = e => {
+          if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
+          if (e.code === 'ArrowLeft')  this.state.left  = false;
+          if (e.code === 'ArrowRight') this.state.right = false;
+          if (e.code === 'ArrowUp')    this.state.up    = false;
+          if (e.code === 'ArrowDown')  this.state.down  = false;
+        };
+        window.addEventListener('keydown', this.onKeyDown, {passive:false});
+        window.addEventListener('keyup',   this.onKeyUp,   {passive:false});
+      },
+      tick(time, dt) {
+        const dsec = dt / 1000;
+        const deg2rad = Math.PI / 180;
+
+        // prefer look-controls if present
+        const lc = this.el.components['look-controls'];
+        if (lc && lc.pitchObject && lc.yawObject) {
+          const yaw = lc.yawObject.rotation;
+          const pitch = lc.pitchObject.rotation;
+
+          // apply yaw, left negative, right positive
+          if (this.state.left)  yaw.y += this.data.yawSpeed * dsec * deg2rad;
+          if (this.state.right) yaw.y +=  -this.data.yawSpeed * dsec * deg2rad;
+
+          // apply pitch, up negative, down positive
+          if (this.state.up)    pitch.x += this.data.pitchSpeed * dsec * deg2rad;
+          if (this.state.down)  pitch.x +=  -this.data.pitchSpeed * dsec * deg2rad;
+
+          // clamp pitch
+          const clampRad = this.data.clamp * deg2rad;
+          pitch.x = Math.max(-clampRad, Math.min(clampRad, pitch.x));
+        } else {
+          // fallback, no look-controls present
+          const rot = this.el.getAttribute('rotation');
+          if (this.state.left)  rot.y -= this.data.yawSpeed * dsec;
+          if (this.state.right) rot.y += this.data.yawSpeed * dsec;
+          if (this.state.up)    rot.x -= this.data.pitchSpeed * dsec;
+          if (this.state.down)  rot.x += this.data.pitchSpeed * dsec;
+          rot.x = Math.max(-this.data.clamp, Math.min(this.data.clamp, rot.x));
+          this.el.setAttribute('rotation', `${rot.x} ${rot.y} ${rot.z}`);
+        }
+      },
+      remove() {
+        window.removeEventListener('keydown', this.onKeyDown);
+        window.removeEventListener('keyup',   this.onKeyUp);
+      }
+    });
+    </script>
+
+    <!-- prevent arrow keys from moving camera, only change direction -->
+    <script>
+    AFRAME.registerComponent('block-arrow-move', {
+      init() {
+        this.onKeyDown = e => {
+          if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
+              e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+          }
+        };
+        // capture true, so we intercept before other handlers
+        window.addEventListener('keydown', this.onKeyDown, {capture: true});
+      },
+      remove() {
+        window.removeEventListener('keydown', this.onKeyDown, {capture: true});
+      }
+    });
+    </script>
 
 </head>
 <body>
 
-<!-------------- Austin's stuff ----------------->
-
-<!-- Only move with wasd -->
-
-<script>
-AFRAME.registerComponent('wasd-move-only', {
-  schema: { speed: {type: 'number', default: 3} }, // meters per second
-  init() {
-    this.state = {w:false, a:false, s:false, d:false};
-    this._vecF = new THREE.Vector3();
-    this._vecR = new THREE.Vector3();
-
-    this.onKeyDown = e => {
-      if (e.code === 'KeyW') this.state.w = true;
-      if (e.code === 'KeyA') this.state.a = true;
-      if (e.code === 'KeyS') this.state.s = true;
-      if (e.code === 'KeyD') this.state.d = true;
-    };
-    this.onKeyUp = e => {
-      if (e.code === 'KeyW') this.state.w = false;
-      if (e.code === 'KeyA') this.state.a = false;
-      if (e.code === 'KeyS') this.state.s = false;
-      if (e.code === 'KeyD') this.state.d = false;
-    };
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
-  },
-  tick(time, dt) {
-    const dsec = dt / 1000;
-    if (!(this.state.w || this.state.a || this.state.s || this.state.d)) return;
-
-    const obj = this.el.object3D;
-    // get yaw object if present, so movement follows where we look
-    const lc = this.el.components['look-controls'];
-    const yawObj = lc && lc.yawObject ? lc.yawObject : obj;
-
-    // forward on XZ plane
-    this._vecF.set(0, 0, -1).applyQuaternion(yawObj.quaternion);
-    this._vecF.y = 0;
-    this._vecF.normalize();
-
-    // right vector
-    this._vecR.copy(this._vecF).cross(new THREE.Vector3(0, 1, 0)).normalize();
-
-    let moveX = 0, moveZ = 0;
-    if (this.state.w) { moveX += this._vecF.x; moveZ += this._vecF.z; }
-    if (this.state.s) { moveX -= this._vecF.x; moveZ -= this._vecF.z; }
-    if (this.state.d) { moveX += this._vecR.x; moveZ += this._vecR.z; }
-    if (this.state.a) { moveX -= this._vecR.x; moveZ -= this._vecR.z; }
-
-    const speed = this.data.speed * dsec;
-    obj.position.x += moveX * speed;
-    obj.position.z += moveZ * speed;
-  },
-  remove() {
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
-  }
-});
-</script>
-
-    <!-- look around smoothly with arrow keys script -->
-
-<script>
-AFRAME.registerComponent('arrow-look', {
-  schema: {
-    yawSpeed:   {type: 'number', default: 90},   // deg per second
-    pitchSpeed: {type: 'number', default: 75},   // deg per second
-    clamp:      {type: 'number', default: 85}    // deg up:down
-  },
-  init() {
-    this.state = { left:false, right:false, up:false, down:false };
-    this.onKeyDown = e => {
-      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
-      if (e.code === 'ArrowLeft')  this.state.left  = true;
-      if (e.code === 'ArrowRight') this.state.right = true;
-      if (e.code === 'ArrowUp')    this.state.up    = true;
-      if (e.code === 'ArrowDown')  this.state.down  = true;
-    };
-    this.onKeyUp = e => {
-      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
-      if (e.code === 'ArrowLeft')  this.state.left  = false;
-      if (e.code === 'ArrowRight') this.state.right = false;
-      if (e.code === 'ArrowUp')    this.state.up    = false;
-      if (e.code === 'ArrowDown')  this.state.down  = false;
-    };
-    window.addEventListener('keydown', this.onKeyDown, {passive:false});
-    window.addEventListener('keyup',   this.onKeyUp,   {passive:false});
-  },
-  tick(time, dt) {
-    const dsec = dt / 1000;
-    const deg2rad = Math.PI / 180;
-
-    // prefer look-controls if present
-    const lc = this.el.components['look-controls'];
-    if (lc && lc.pitchObject && lc.yawObject) {
-      const yaw = lc.yawObject.rotation;
-      const pitch = lc.pitchObject.rotation;
-
-      // apply yaw, left negative, right positive
-      if (this.state.left)  yaw.y += this.data.yawSpeed * dsec * deg2rad;
-      if (this.state.right) yaw.y +=  -this.data.yawSpeed * dsec * deg2rad;
-
-      // apply pitch, up negative, down positive
-      if (this.state.up)    pitch.x += this.data.pitchSpeed * dsec * deg2rad;
-      if (this.state.down)  pitch.x +=  -this.data.pitchSpeed * dsec * deg2rad;
-
-      // clamp pitch
-      const clampRad = this.data.clamp * deg2rad;
-      pitch.x = Math.max(-clampRad, Math.min(clampRad, pitch.x));
-    } else {
-      // fallback, no look-controls present
-      const rot = this.el.getAttribute('rotation');
-      if (this.state.left)  rot.y -= this.data.yawSpeed * dsec;
-      if (this.state.right) rot.y += this.data.yawSpeed * dsec;
-      if (this.state.up)    rot.x -= this.data.pitchSpeed * dsec;
-      if (this.state.down)  rot.x += this.data.pitchSpeed * dsec;
-      rot.x = Math.max(-this.data.clamp, Math.min(this.data.clamp, rot.x));
-      this.el.setAttribute('rotation', `${rot.x} ${rot.y} ${rot.z}`);
-    }
-  },
-  remove() {
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup',   this.onKeyUp);
-  }
-});
-</script>
-
-    <!-- prevent arrow keys from moving camera, only change direction  -->
-
-<script>
-AFRAME.registerComponent('block-arrow-move', {
-  init() {
-    this.onKeyDown = e => {
-      if (e.code === 'ArrowLeft' || e.code === 'ArrowRight' ||
-          e.code === 'ArrowUp'   || e.code === 'ArrowDown') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      }
-    };
-    // capture true, so we intercept before other handlers
-    window.addEventListener('keydown', this.onKeyDown, {capture: true});
-  },
-  remove() {
-    window.removeEventListener('keydown', this.onKeyDown, {capture: true});
-  }
-});
-</script>
-
-<!-- End Austin's stuff - for now -->
-
 <a-scene
-        renderer="colorManagement: true; physicallyCorrectLights: true"
-        physics="gravity: -9.8; debug: false"
-        skybox-box="path: ./skybox/; ext: .jpg; rotTop: 1.5708; rotBottom: -1.5708">
+    renderer="colorManagement: true; physicallyCorrectLights: true"
+    physics="gravity: -9.8; debug: false"
+    skybox-box="path: ./skybox/; ext: .jpg; rotTop: 1.5708; rotBottom: -1.5708">
+
+    <!-- CLICKABLE BOX -->
+    <a-box class="clickable"
+           position="0 1.5 -3"
+           material="color: #4CC3D9"
+           change-color-on-click>
+    </a-box>
+    <!-- END CLICKABLE BOX -->
 
     <!-- LIGHTS -->
     <a-entity light="type: ambient; intensity: 0.45"></a-entity>
     <a-entity light="type: directional; intensity: 1.0" position="2 6 2"></a-entity>
 
-
-    <!-- Player RIG with collisions -->
-    <!-- CAMERA (add this; you can replace with your physics rig later) -->
-    <!-- <a-entity id="rig" position="0 0 6">
-    <a-camera wasd-controls look-controls></a-camera>
-    </a-entity> -->
-
-
+    <!-- ASSETS -->
     <a-assets>
-        <img id="groundTexture" src="images/concrete.jpg" alt="">
+        <img id="groundTexture" src="images/Grass_With_Many_Paths.png" alt="">
     </a-assets>
 
-    <!-- create camera obj -->
-    <a-entity id="rig" position="0 0 6">
+    <!-- PLAYER RIG -->
+    <a-entity id="rig" position="0 0 6" block-arrow-move>
       <a-camera
         look-controls
         arrow-look="yawSpeed:120; pitchSpeed:90; clamp:80"
         wasd-move-only="speed:3">
+
+        <!-- cursor is INSIDE the camera so we raycast from POV -->
+        <a-entity
+            cursor="fuse: false"
+            raycaster="objects: .clickable">
+        </a-entity>
+
       </a-camera>
     </a-entity>
 
-
-<!------------------------------------------------------------------------------------------------------>
-<!--                                          Main Hallway                                            -->
-<!------------------------------------------------------------------------------------------------------>
-
-    <!-- More of Austin's stuff -->
-     <!-- Create video for back wall-->
-    <a-assets>
-    <!-- put your mp4 in ./media, or adjust the path -->
-    <video id="wallVid"
-            src="media/TestVideo2Vrxp.mp4"
-            crossorigin="anonymous"
-            muted
-            playsinline
-            loop
-            preload="auto"></video>
-    </a-assets>
-
-    <!-- Place video on back wall -->
-    <a-plane id="backWallVideo"
-            width="1.8"
-            height="3.2"
-            position="0 1.5 11.92"
-            rotation="0 180 0"
-            material="shader: flat; src: #wallVid">
+    <!-- GROUND COLLIDER -->
+    <a-plane id="ground" src="#groundTexture"
+             rotation="-90 0 0"
+             width="200"
+             height="200"
+             static-body="shape: box">
     </a-plane>
 
-    <script>
-    const vid = document.getElementById('wallVid');
-
-    // try silent start, harmless if blocked
-    window.addEventListener('load', () => vid.play().catch(() => {}));
-
-    // first click, unmute and play with sound
-    const startWithSound = async () => {
-        vid.muted = false;
-        vid.volume = 1.0;
-        try { await vid.play(); } catch(e) {}
-        document.removeEventListener('click', startWithSound);
-    };
-    document.addEventListener('click', startWithSound);
-    </script>
-    <!-- End of Austin's stuff -->
-
-<!------------------------------------------------------------------------------------------------------>
-<!--                                        Begin Outer Shell                                           --> 
-<!------------------------------------------------------------------------------------------------------>
-
-    <!-- =========================
-        ROOM SHELL
-        ========================= -->
-
-    <!-- BACK WALL of the room -->
-    <a-entity
-      blank-wall="width:12; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="0 0 12"
-      rotation="0 0 0">
-    </a-entity>
-
-    <!-- LEFT WALL of the room -->
-    <a-entity
-      blank-wall="width:10; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-6 0 7"
-      rotation="0 90 0">
-    </a-entity>
-
-    <!-- RIGHT WALL of the room -->
-    <a-entity
-      blank-wall="width:10; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="6 0 7"
-      rotation="0 90 0">
-    </a-entity>
-
-    <!-- FRONT WALL SEGMENTS of the room (doorway 4 m wide at z = +2) -->
-    <a-entity
-      blank-wall="width:4; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-4 0 2"
-      rotation="0 0 0">
-    </a-entity>
-
-    <a-entity
-      blank-wall="width:4; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="4 0 2"
-      rotation="0 0 0">
-    </a-entity>
-
-
-    <!-- =========================
-        MAIN HALLWAY
-        =========================
-        Hallway width: 3 m (x=-1.5..+1.5)
-        Hallway runs z = +2 ... -13
-        Height: 4 m
-    -->
-
-    <!-- RIGHT HALLWAY WALL (continuous, unchanged) -->
-    <a-entity
-      blank-wall="width:15; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="2 0 -5.5"
-      rotation="0 90 0">
-    </a-entity>
-
-    <!-- LEFT HALLWAY WALL, FRONT SEGMENT
-        Covers z = +2 down to z = -6.5
-        length = 8.5
-        midpoint z = -2.25
-        Place at x = -1.5 (left side of hallway), rotate Y=90 so width runs along Z
-    -->
-    <a-entity
-      blank-wall="width:8.5; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-2 0 -2.25"
-      rotation="0 90 0">
-    </a-entity>
-
-    <!-- LEFT HALLWAY WALL, BACK SEGMENT
-        Covers z = -9.5 down to z = -13
-        length = 3.5
-        midpoint z = -11.25
-    -->
-    <a-entity
-      blank-wall="width:3.5; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-2 0 -11.25"
-      rotation="0 90 0">
-    </a-entity>
-
-    <!-- HALLWAY END CAP at z = -13 -->
-    <a-entity
-      blank-wall="width:4; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="0 0 -13"
-      rotation="0 0 0">
-    </a-entity>
-
-
-    <!-- =========================
-        BRANCH HALLWAY (to the left)
-        =========================
-        Branch intersects the main hallway through the gap
-        which spans z = -9.5 .. -6.5.
-        Branch width in Z is 3 m (same "opening height" along hallway).
-        Branch runs left (negative X) for 6 m from x=-1.5 to x=-7.5.
-        Same height: 4 m.
-    -->
-
-    <!-- BRANCH TOP WALL (toward +Z side of branch)
-        Runs along X.
-        width along X = 6 (from -7.5..-1.5)
-        center x = -4.5
-        This top edge sits at z = -6.5
-    -->
-    <a-entity
-      blank-wall="width:6; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-5 0 -6.5"
-      rotation="0 0 0">
-    </a-entity>
-
-    <!-- BRANCH BOTTOM WALL (toward -Z side of branch)
-        Same width=6, same center x=-4.5,
-        but sits at z = -9.5
-    -->
-    <a-entity
-      blank-wall="width:6; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-5 0 -9.5"
-      rotation="0 0 0">
-    </a-entity>
-
-    <!-- BRANCH END CAP
-        Seals x = -7.5, spans the 3 m "corridor height" in Z
-        (z=-9.5..-6.5 ⇒ midpoint z=-8)
-        Rotate Y=90 so width follows Z.
-    -->
-    <!-- <a-entity
-      blank-wall="width:3; height:4; thickness:0.15; color:#eaeaea; anchor:ground"
-      position="-7.5 0 -8"
-      rotation="0 90 0">
-    </a-entity> -->
-
-<!------------------------------------------------------------------------------------------------------>
-<!--                                        End Outer Shell                                           --> 
-<!------------------------------------------------------------------------------------------------------>
-
-
-    <!-- Chair Componenet -->
-    <!-- <a-entity chair="
-          position: -15 0 -28.5;
-          rotation: 0 180 0;
-          scale: 1 1 1;
-
-          width: 0.6;
-          depth: 0.6;
-          seatHeight: 0.46;
-          seatThickness: 0.045;
-          backHeight: 0.95;
-          backThickness: 0.03;
-          legThickness: 0.04;
-          legInset: 0.03;
-
-          color: #8d6e63;
-          legColor: #4e342e;
-          metalness: 0.15;
-          roughness: 0.85
-        "
-              position="0 0 -2">
-    </a-entity> -->
-
-    <a-entity id="classroom-root"></a-entity>
-
-    <!-- To fill in the weird gap above the entrance to the classroom -->
-    <!-- <a-entity   
-    blank-wall="width: 7; height: 5; thickness: 0.3; color: #eaeaea; anchor: ground"
-    position="-11.63 5 -28.57"
-    rotation="0 90 0">
-    </a-entity> -->
-
-    <!-- Tree Cluster -->
-    <!-- <a-entity tree-cluster="count: 18; radius_ft: 240" position="0 0 0"></a-entity> -->
-    
-    <a-assets>
-        <img id="classroomRef" src="images/GoodHall_Classroom.jpg" crossorigin="anonymous" />
-    </a-assets>
-
-    <!-- Reliable ground collider -->
-    <a-plane id="ground" src="#groundTexture"
-             rotation="-90 0 0" width="1000" height="1000"
-             static-body="shape: box"></a-plane>
-
-</a-scene>  <!-- End A-Scene -->
-
-    <!--------------------------Classroom function-------------------------->
-    <!-- Everything is this function is chatgpt slightly tweaked by Josiah-->
-    <script>
-    (function () {
-        // ====== CONFIG (now meters directly) ======
-        const classroomOrigin = new AFRAME.THREE.Vector3(-12.9, 0, -8);
-
-        const ROOM_W = 9.75359968788481;    // 32 ft
-        const ROOM_D = 7.924799746406408;   // 26 ft
-        const WALL_H = 4.5719998536960045;  // 15 ft
-        const WALL_T = 0.15239999512320015; // 0.5 ft
-        const DOOR_W = 1.828799941478402;   // 6 ft
-        const SIDE_OPENING_W = 1.828799941478402; // 6 ft
-
-        function ensureRoot(scene) {
-            let root = scene.querySelector('#classroom-root');
-            if (!root) {
-                root = document.createElement('a-entity');
-                root.id = 'classroom-root';
-                scene.appendChild(root);
-            }
-            if (root.dataset.built === 'true') return null;
-            root.dataset.built = 'true';
-            root.setAttribute('position', `${classroomOrigin.x} ${classroomOrigin.y} ${classroomOrigin.z}`);
-            return root;
-        }
-
-        function buildClassroom(root) {
-            const room = document.createElement('a-entity');
-            room.id = 'classroom';
-            root.appendChild(room);
-
-            // ===== Floor =====
-            const floor = document.createElement('a-entity');
-            floor.setAttribute('classroom-floor', `width:${ROOM_W}; depth:${ROOM_D}; color:#e7e7ea`);
-            room.appendChild(floor);
-
-            // ===== Walls =====
-            // Back wall
-            const wBack = document.createElement('a-entity');
-            wBack.setAttribute(
-                'blank-wall',
-                `width:${ROOM_W}; height:${WALL_H}; thickness:${WALL_T}; color:#ffffff; anchor:ground`
-            );
-            wBack.setAttribute('position', `0 0 ${-ROOM_D/2}`);
-            room.appendChild(wBack);
-
-            // Front wall
-            const wFront = document.createElement('a-entity');
-            wFront.setAttribute(
-                'blank-wall',
-                `width:${ROOM_W}; height:${WALL_H}; thickness:${WALL_T}; color:#ffffff; anchor:ground`
-            );
-            wFront.setAttribute('position', `0 0 ${ROOM_D/2}`);
-            wFront.setAttribute('rotation', '0 180 0');
-            room.appendChild(wFront);
-
-            // Left wall
-            const wLeft = document.createElement('a-entity');
-            wLeft.setAttribute(
-                'blank-wall',
-                `width:${ROOM_D}; height:${WALL_H}; thickness:${WALL_T}; color:#ffffff; anchor:ground`
-            );
-            wLeft.setAttribute('rotation', '0 90 0');
-            wLeft.setAttribute('position', `${-ROOM_W/2} 0 0`);
-            room.appendChild(wLeft);
-
-            // Right wall split around opening
-            const segDepth = (ROOM_D - SIDE_OPENING_W) / 2;
-            const rightA = document.createElement('a-entity');
-            rightA.setAttribute(
-                'blank-wall',
-                `width:${segDepth}; height:${WALL_H}; thickness:${WALL_T}; color:#ffffff; anchor:ground`
-            );
-            rightA.setAttribute('rotation', '0 -90 0');
-            rightA.setAttribute(
-                'position',
-                `${ROOM_W/2} 0 ${(SIDE_OPENING_W/2 + segDepth/2)}`
-            );
-            room.appendChild(rightA);
-
-            const rightB = document.createElement('a-entity');
-            rightB.setAttribute(
-                'blank-wall',
-                `width:${segDepth}; height:${WALL_H}; thickness:${WALL_T}; color:#ffffff; anchor:ground`
-            );
-            rightB.setAttribute('rotation', '0 -90 0');
-            rightB.setAttribute(
-                'position',
-                `${ROOM_W/2} 0 ${-(SIDE_OPENING_W/2 + segDepth/2)}`
-            );
-            room.appendChild(rightB);
-
-            // ===== Ceiling =====
-            const ceiling = document.createElement('a-box');
-            ceiling.setAttribute('width', ROOM_W);
-            ceiling.setAttribute('depth', ROOM_D);
-            ceiling.setAttribute('height', 0.06); // already meters-ish thickness
-            ceiling.setAttribute('material', 'color:#f3f4f6; roughness:1');
-            ceiling.setAttribute('position', `0 ${WALL_H} 0`);
-            room.appendChild(ceiling);
-
-            // ===== Back wall fixtures: whiteboard, screen, double doors =====
-            const board = document.createElement('a-entity');
-            board.setAttribute(
-              'whiteboard',
-              'width:3.6575998829568037; height:1.3715999561088015; frameColor:#222; surfaceColor:#f7fafc'
-              // width 12 ft, height 4.5 ft
-            );
-            board.setAttribute(
-              'position',
-              `0 ${1.524} ${-ROOM_D/2 + 0.12}`
-              // 5 ft -> 1.524 m up; pull 0.12m off wall
-            );
-            room.appendChild(board);
-
-            const screen = document.createElement('a-entity');
-            screen.setAttribute(
-              'projection-screen',
-              'width:3.048; height:1.524; color:#f0f0f0'
-              // width 10 ft, height 5 ft
-            );
-            screen.setAttribute(
-              'position',
-              `0 ${2.133599931724802} ${-ROOM_D/2 + 0.115}`
-              // 7 ft -> 2.1336 m up
-            );
-            room.appendChild(screen);
-
-            // Double doors left & right
-            const doorOffsetX = 2.4383999219712025; // 8 ft
-            const mkBackDoor = (sign) => {
-              const d = document.createElement('a-entity');
-              d.setAttribute(
-                'double-door',
-                `width:${DOOR_W}; height:${WALL_H}; autoOpen:true; frameColor:#444; leafColor:#9aa0a6`
-              );
-              d.setAttribute(
-                'position',
-                `${sign * doorOffsetX} ${1.066799965862401} ${-ROOM_D/2 + 0.15}`
-                // y = 3.5 ft -> 1.0668 m
-              );
-              return d;
-            };
-            room.appendChild(mkBackDoor(-1));
-            room.appendChild(mkBackDoor( 1));
-
-            // ===== Windows on left wall =====
-            for (let i = 0; i < 3; i++) {
-              const win = document.createElement('a-entity');
-              win.setAttribute('window-pane', 'width:1.2191999609856012; height:1.2191999609856012; opacity:0.4');
-              win.setAttribute(
-                'position',
-                `${-ROOM_W/2 + 0.02} 1.7 ${(-1.828799941478402 + i*1.828799941478402)}`
-                // (-6 + i*6) ft  → each 1.8288 m step
-              );
-              win.setAttribute('rotation', '0 90 0');
-              room.appendChild(win);
-            }
-
-            // ===== Ceiling projectors =====
-            for (let i = 0; i < 2; i++) {
-              const proj = document.createElement('a-entity');
-              proj.setAttribute('ceiling-projector', '');
-              const px = (-0.914399970739201 + i*1.828799941478402); // (-3 + i*6) ft
-              proj.setAttribute(
-                'position',
-                `${px} ${WALL_H - 0.1066799965862401} ${-1.524}`
-                // y offset 0.35 ft -> 0.10668 m; z -5 ft -> -1.524 m
-              );
-              room.appendChild(proj);
-            }
-
-            // ===== Light grid =====
-            for (let x = -3; x <= 3; x += 3) {
-              for (let z = -6; z <= 6; z += 6) {
-                const light = document.createElement('a-entity');
-                light.setAttribute('ceiling-light-square', 'size:0.6096; intensity:1.0');
-                const lx = (x*2)/3.28084; // original x*FT*2
-                const lz = (z)/3.28084;  // original z*FT
-                light.setAttribute('position', `${lx} ${WALL_H - 0.12} ${lz}`);
-                room.appendChild(light);
-              }
-            }
-
-            // ===== Air vents =====
-            for (let i = 0; i < 2; i++) {
-              const vent = document.createElement('a-entity');
-              vent.setAttribute('air-vent', 'width:0.6096; height:0.3048');
-              const vx = (-8 + i*16)/3.28084;           // (-8 + i*16) ft
-              const vy = WALL_H - 0.02;                 // keep ~same offset down from ceiling (0.02 m already fine)
-              const vz = (ROOM_D/2 - 2)/3.28084;        // (ROOM_D/2 - 2 ft)
-              vent.setAttribute('rotation', '-90 0 0');
-              vent.setAttribute('position', `${vx} ${vy} ${vz}`);
-              room.appendChild(vent);
-            }
-
-            // ===== Tables & chairs =====
-            const rows = 3, cols = 4;
-            const tableWft = 4.0;    // ft
-            const tableDft = 1.8;    // ft
-            const spacingXft = 6.8;  // ft
-            const spacingZft = 5.6;  // ft
-            const startX = -((cols-1) * spacingXft)/2;
-            const startZ = -2.2;
-
-            for (let r = 0; r < rows; r++) {
-              for (let c = 0; c < cols; c++) {
-                const tx = (startX + c*spacingXft)/3.28084;
-                const tz = (startZ + r*spacingZft)/3.28084;
-
-                const table = document.createElement('a-entity');
-                table.setAttribute(
-                  'classroom-table',
-                  `width:${1.2191999609856012}; depth:${0.5486399853664003}; height:0.7620000091440001`
-                  // 4.0ft, 1.8ft, 2.5ft
-                );
-                table.setAttribute('position', `${tx} 0 ${tz}`);
-                room.appendChild(table);
-
-                const chair = document.createElement('a-entity');
-                chair.setAttribute('classroom-chair', '');
-
-                chair.setAttribute('position', `${tx} 0 ${tz + 0.3809999878080004}`); // 1.25 ft forward
-                chair.setAttribute('rotation', '0 180 0');
-                room.appendChild(chair);
-              }
-            }
-        }
-
-        function onSceneReady() {
-            const scene = document.querySelector('a-scene');
-            const root = ensureRoot(scene);
-            if (!root) return;
-            buildClassroom(root);
-        }
-
-        const scene = document.querySelector('a-scene');
-        if (scene.hasLoaded) onSceneReady();
-        else scene.addEventListener('loaded', onSceneReady);
-    })();
-    </script>
-
-    <!---------------------------End Classroom function--------------------------->
+</a-scene>
 
 </body>
 </html>
