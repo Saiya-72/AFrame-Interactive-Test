@@ -199,6 +199,28 @@
     </a-box>
     <!-- END CLICKABLE BOX -->
 
+    <!-- DISAPPEARING TOWER -->
+    <!-- Thing we want to show/hide -->
+    <a-box  id="dissapearing-box"
+            position="-3 2 -10"
+            depth="3"
+            width="3"
+            height="1000"
+            color="#800000"
+            visible="false">
+    </a-box>
+
+    <!-- The button you click -->
+    <a-box class="clickable"
+          position="-3 1.5 -2.5"
+          depth="0.5"
+          width="0.5"
+          height="0.5"
+          color="#121212"
+          toggle-target-on-click="target: #dissapearing-box">
+    </a-box>
+    <!-- END DISAPPEARING TOWER-->
+
     <!-- LIGHTS -->
     <a-entity light="type: ambient; intensity: 0.45"></a-entity>
     <a-entity light="type: directional; intensity: 1.0" position="2 6 2"></a-entity>
