@@ -14,13 +14,20 @@
     <script src="components/toggle-target-on-click.js"></script>
     <script src="components/slide-on-click.js"></script>
     <script src="components/video-toggle-on-click.js"></script>
+    <script src="components/wasd-move-only.js"></script>
+    <script src="components/arrow-look.js"></script>
 
     <!-- Skybox component -->
     <script src="skybox/skycomponent.js"></script>
 
     <style>
-      html, body { margin:0; height:100%; }
+      html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden; /* prevents arrow keys from scrolling the page */
+    }
     </style>
+
 </head>
 <body>
 
@@ -31,11 +38,16 @@
     renderer="colorManagement: true; physicallyCorrectLights: true"
     skybox-box="path: ./skybox/; ext: .jpg; rotTop: 1.5708; rotBottom: -1.5708; size: 1000">
 
-    <!-- CAMERA + CURSOR -->
-    <a-entity position="0 1 6">
-      <a-camera look-controls smooth-look="yawFactor:0.5; pitchFactor:0.5; pitchClamp:80">
+    <!-- PLAYER RIG (the "body") -->
+    <a-entity id="rig"
+          position="0 1 6"
+          rotation="0 0 0"
+          wasd-move-only="speed:10">
+  
+      <a-camera arrow-look look-controls="enabled: false">
         <a-entity
           id="aimDot"
+          class="cursor"
           cursor="fuse: false"
           raycaster="objects: .clickable"
           position="0 0 -1"
@@ -43,6 +55,7 @@
           material="color: white; shader: flat">
         </a-entity>
       </a-camera>
+
     </a-entity>
 
     <!-- CLICKABLE BOX (changes color when clicked) -->
