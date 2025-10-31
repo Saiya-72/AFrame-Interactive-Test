@@ -33,13 +33,13 @@
 
     <!-- CAMERA + CURSOR -->
     <a-entity position="0 1 6">
-      <a-camera look-controls smooth-look="yawFactor:0.4; pitchFactor:0.4; pitchClamp:80">
+      <a-camera look-controls smooth-look="yawFactor:0.5; pitchFactor:0.5; pitchClamp:80">
         <a-entity
           id="aimDot"
           cursor="fuse: false"
           raycaster="objects: .clickable"
           position="0 0 -1"
-          geometry="primitive: circle; radius: 0.002"
+          geometry="primitive: circle; radius: 0.005"
           material="color: white; shader: flat">
         </a-entity>
       </a-camera>
